@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Clinical Workspace - OPD Queue & Diagnostics</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Document Viewer Specific Styles */
+    .record-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    .doc-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: #ffffff;
+      cursor: pointer;
+      transition: transform 0.15s, border-color 0.15s;
+      padding: 0.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .doc-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+    }
+    /* Full-Size Modal Preview */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.75);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .modal-content {
+      background: white;
+      width: 90%;
+      max-width: 950px;
+      max-height: 90vh;
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    .ocr-box {
+      background: #f1f5f9;
+      border: 1px dashed #cbd5e1;
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <div class="doctor-layout">
+    <aside class="queue-panel">
+      <div style="padding: 1rem; border-bottom: 1px solid var(--border);">
+        <h3 style="font-size: 1.125rem;">Live OPD Queue</h3>
+        <p style="font-size: 0.75rem; color: var(--text-muted);" id="queueCount">0 Waiting</p>
+      </div>
+      <div id="queueList" style="flex: 1; overflow-y: auto;"></div>
+    </aside>
+
+    <main class="main-portal" id="portalWorkspace">
+      <div style="padding: 3rem; text-align: center; margin: auto; color: var(--text-muted);" id="emptyState">
+        Select a patient from the waiting queue to review clinical summary, inspect records, and prescribe.
+      </div>
+
+      <div id="activeWorkspace" style="display: none; padding: 2rem; flex: 1;">
+        <div style="background: white; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+            <div>
+              <span id="activeToken" style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">#OPD-0000</span>
+              <h2 id="activePatientName" style="margin-top: 0.25rem;">Patient Name</h2>
+              <p id="activeDemographics" style="color: var(--text-muted); font-size: 0.875rem;">00 Y, Male</p>
+            </div>
+            <div id="activeTriageAlert"></div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+            <div>
+              <h4 style="font-size: 0.875rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">Chief Concerns</h4>
+              <p id="activeComplaint" style="font-size: 1.05rem; font-weight: 500;">Patient symptom narrative...</p>
+              
+              <div style="display: flex; gap: 1rem; margin-top: 0.75rem; font-size: 0.875rem;">
+                <div>Pain Severity: <strong id="activePain">0/10</strong></div>
+                <div>Duration: <strong id="activeDuration">--</strong></div>
+              </div>
+            </div>
+            <div>
+              <h4 style="font-size: 0.875rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">Ayush Parameters</h4>
+              <ul style="list-style: none; font-size: 0.875rem;">
+                <li>Agni: <strong id="activeAgni">--</strong></li>
+                <li>Kostha: <strong id="activeKostha">--</strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <div style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+            <h4 style="font-size: 0.875rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">Underlying Conditions</h4>
+            <div id="activeComorbidities" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+          </div>
+
+          <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h4 style="font-size: 0.875rem; text-transform: uppercase; color: var(--text-muted);">
+                Attached Records & Prescription Scans (<span id="recordCount">0</span>)
+              </h4>
+              <small style="color: var(--primary); font-weight: 600;">Click card to inspect full scan & OCR</small>
+            </div>
+            <div id="attachedRecordsContainer" class="record-grid"></div>
+          </div>
+        </div>
+
+        <div style="background: white; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem;">
+          <h3 style="font-size: 1.125rem; margin-bottom: 1rem;">Clinical Assessment & Prescription Pad</h3>
+          <div class="form-group">
+            <label for="doctorNotes">Diagnosis & Clinical Impressions</label>
+            <textarea id="doctorNotes" class="form-control" rows="3" placeholder="Enter findings, physical examination notes..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="medRx">Rx Medication / Dosage</label>
+            <input type="text" id="medRx" class="form-control" placeholder="e.g. Tab Metformin 500mg BD, Tab Pantoprazole 40mg OD">
+          </div>
+          <button id="completeConsultBtn" class="btn btn-primary" style="width: 100%;">
+            Complete Consultation & Dispatch to ABHA
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="docViewerModal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalDocTitle" style="font-size: 1.1rem;">Scanned Record Inspection</h3>
+        <button id="closeModalBtn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <h5 style="margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">Original Image / Scan</h5>
+          <div style="max-height: 400px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; background: #0f172a;">
+            <img id="modalPreviewImg" src="" alt="Clinical Scan" style="max-width: 100%; height: auto; object-fit: contain;">
+          </div>
+        </div>
+        <div>
+          <h5 style="margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">Extracted OCR & Clinical Data</h5>
+          <div id="modalOcrText" class="ocr-box">No parsed text available.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ClinicalAPI } from './api.js';
+
+    let selectedPatientId = null;
+
+    async function renderQueue() {
+      const listEl = document.getElementById('queueList');
+      const countEl = document.getElementById('queueCount');
+
+      try {
+        const queue = await ClinicalAPI.getQueue();
+      
+      const activeQueue = queue.filter(q => q.status === 'waiting');
+      countEl.textContent = `${activeQueue.length} Patient(s) In Waiting`;
+      listEl.innerHTML = '';
+
+      activeQueue.forEach(patient => {
+        const item = document.createElement('div');
+        item.style.padding = '1rem';
+        item.style.borderBottom = '1px solid var(--border)';
+        item.style.cursor = 'pointer';
+        item.style.transition = 'background 0.2s';
+        if (patient.id === selectedPatientId) item.style.backgroundColor = 'var(--bg-slate)';
+
+        const isHighPain = Number(patient.clinicalImpression.severityScale) > 7;
+        const isEmergency = patient.clinicalImpression.isEmergency || isHighPain;
+
+        item.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <strong>${patient.token}</strong>
+            <small style="color: var(--text-muted);">${new Date(patient.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+          </div>
+          <div style="font-size: 0.9rem; margin-top: 0.25rem;">${patient.patient.name}</div>
+          <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
+            ${isEmergency ? `<span class="badge badge-danger pulse-red">🚨 ${isHighPain ? 'HIGH PAIN ALERT' : 'EMERGENCY ALERT'}</span>` : '<span class="badge badge-normal">Routine</span>'}
+            ${patient.pastRecords && patient.pastRecords.length ? '<span class="badge" style="background:#e0f2fe; color:#0369a1;">📎 ' + patient.pastRecords.length + ' Doc(s)</span>' : ''}
+          </div>
+        `;
+
+        item.onclick = () => selectPatient(patient.id);
+        listEl.appendChild(item);
+      });
+      } catch (error) {
+        console.error(error);
+        countEl.textContent = 'Unable to load queue';
+        listEl.innerHTML = '<p style="padding: 1rem; color: var(--danger-text);">Backend unavailable. Start the MySQL server with <code>npm start</code>.</p>';
+      }
+    }
+
+    async function selectPatient(id) {
+      selectedPatientId = id;
+      await renderQueue();
+      const queue = await ClinicalAPI.getQueue();
+      const p = queue.find(item => item.id === id);
+      if (!p) return;
+
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('activeWorkspace').style.display = 'block';
+
+      document.getElementById('activeToken').textContent = p.token;
+      document.getElementById('activePatientName').textContent = p.patient.name;
+      document.getElementById('activeDemographics').textContent = `${p.patient.age} Years, ${p.patient.gender.toUpperCase()} | ABHA / Mobile: ${p.patient.telecom}`;
+      document.getElementById('activeComplaint').textContent = p.clinicalImpression.chiefComplaint;
+      document.getElementById('activePain').textContent = `${p.clinicalImpression.severityScale}/10`;
+      document.getElementById('activeDuration').textContent = p.clinicalImpression.duration;
+      document.getElementById('activeAgni').textContent = p.ayushAssessment.agni;
+      document.getElementById('activeKostha').textContent = p.ayushAssessment.kostha;
+
+      const alertContainer = document.getElementById('activeTriageAlert');
+      const isHighPain = Number(p.clinicalImpression.severityScale) > 7;
+      if (p.clinicalImpression.isEmergency || isHighPain) {
+        const alertLabel = isHighPain ? `🚨 HIGH PAIN ALERT (${p.clinicalImpression.severityScale}/10)` : `CRITICAL FLAG: ${p.clinicalImpression.emergencyKeywords.join(', ')}`;
+        alertContainer.innerHTML = `<div class="badge badge-danger pulse-red" style="padding: 0.5rem 1rem;">${alertLabel}</div>`;
+      } else {
+        alertContainer.innerHTML = `<div class="badge badge-normal">Routine General OPD</div>`;
+      }
+
+      const cmContainer = document.getElementById('activeComorbidities');
+      cmContainer.innerHTML = '';
+      if (p.comorbidities && p.comorbidities.length > 0) {
+        p.comorbidities.forEach(cm => {
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.style.background = '#e2e8f0';
+          badge.textContent = cm;
+          cmContainer.appendChild(badge);
+        });
+      } else {
+        cmContainer.textContent = 'None reported.';
+      }
+
+      // Render Attached Documents and Summaries
+      const recordsContainer = document.getElementById('attachedRecordsContainer');
+      const countEl = document.getElementById('recordCount');
+      recordsContainer.innerHTML = '';
+
+      const records = p.pastRecords || [];
+      countEl.textContent = records.length;
+
+      if (records.length === 0) {
+        recordsContainer.innerHTML = '<p style="font-size: 0.85rem; color: var(--text-muted); grid-column: 1/-1;">No previous records or prescription scans attached by patient.</p>';
+      } else {
+        records.forEach((doc, idx) => {
+          const card = document.createElement('div');
+          card.className = 'doc-card';
+          
+          card.innerHTML = `
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <img src="${doc.dataUrl}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 4px; border: 1px solid #e2e8f0;" alt="Record Preview">
+              <div style="flex: 1; overflow: hidden;">
+                <strong style="font-size: 0.85rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${doc.name || `Scan #${idx+1}`}</strong>
+                <div style="font-size: 0.75rem; color: var(--primary); font-weight: 600; margin-top: 0.25rem;">AI Extracted Summary:</div>
+                <p style="font-size: 0.75rem; color: #334155; line-height: 1.3; white-space: pre-line; margin-top: 0.2rem;">${doc.summary || 'Summary unavailable'}</p>
+              </div>
+            </div>
+            <button type="button" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem; padding: 0.4rem; font-size: 0.75rem;">
+              🔍 Open Full Document & OCR
+            </button>
+          `;
+
+          card.onclick = () => openDocModal(doc);
+          recordsContainer.appendChild(card);
+        });
+      }
+    }
+
+    // Modal Lightbox Controller
+    const modal = document.getElementById('docViewerModal');
+    const modalImg = document.getElementById('modalPreviewImg');
+    const modalOcr = document.getElementById('modalOcrText');
+    const modalTitle = document.getElementById('modalDocTitle');
+
+    function openDocModal(doc) {
+      modalTitle.textContent = doc.name || "Attached Clinical Document";
+      modalImg.src = doc.dataUrl || "";
+      modalOcr.innerHTML = `<strong>AI SUMMARY:</strong>\n${doc.summary || 'None'}\n\n----------------------------------------\n<strong>RAW OCR TEXT EXTRACTED:</strong>\n${doc.rawOcr || 'No text recognized'}`;
+      modal.style.display = 'flex';
+    }
+
+    document.getElementById('closeModalBtn').onclick = () => {
+      modal.style.display = 'none';
+    };
+
+    window.onclick = (e) => {
+      if (e.target === modal) modal.style.display = 'none';
+    };
+
+    // Complete Consultation Handler
+    document.getElementById('completeConsultBtn').addEventListener('click', async () => {
+      const notes = document.getElementById('doctorNotes').value;
+      const rx = document.getElementById('medRx').value;
+      if (!notes) {
+        alert("Please append clinical observations.");
+        return;
+      }
+
+      try {
+        await ClinicalAPI.updateStatus(selectedPatientId, 'completed', notes, rx);
+        alert("Consultation finalized. Prescription synchronized to MySQL.");
+        selectedPatientId = null;
+        document.getElementById('doctorNotes').value = '';
+        document.getElementById('medRx').value = '';
+        document.getElementById('activeWorkspace').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'block';
+        renderQueue();
+      } catch (error) {
+        console.error(error);
+        alert(error.message);
+      }
+    });
+
+    renderQueue();
+    setInterval(renderQueue, 5000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPD Smart Kiosk - AI Case-Taking Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .chat-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: 520px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: #f8fafc;
+      overflow: hidden;
+      margin-bottom: 1.25rem;
+    }
+    .chat-scroll {
+      flex: 1;
+      padding: 1.25rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .chat-bubble {
+      max-width: 80%;
+      padding: 0.85rem 1.15rem;
+      border-radius: var(--radius-md);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      animation: fadeIn 0.2s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .bot-bubble {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+      color: var(--text-main);
+    }
+    .user-bubble {
+      background: var(--primary);
+      color: #ffffff;
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+    }
+    .suggestion-bar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0.75rem 1rem;
+      background: #ffffff;
+      border-top: 1px solid var(--border);
+    }
+    .chip-btn {
+      background: var(--bg-slate);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.825rem;
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--text-main);
+      transition: all 0.15s ease;
+    }
+    .chip-btn:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .action-bar {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: #ffffff;
+      border-top: 1px solid var(--border);
+      align-items: center;
+    }
+    .mic-recording {
+      background: #dc2626 !important;
+      color: #ffffff !important;
+      animation: pulse 1.3s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+      70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+      100% { transform: scale(1); }
+    }
+    .summary-card {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-nav">
+      <div class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+        <span id="intakeTitle">AI Clinical Intake Assistant</span>
+      </div>
+      <span id="intakeSubtitle" style="font-size: 0.875rem; color: var(--text-muted);">Guided Anamnesis</span>
+    </div>
+
+    <main class="kiosk-card" style="padding: 1.5rem;">
+      <div id="realtimeSummary" class="summary-card">
+        <strong id="summaryLabel">Extracted Summary: </strong><span id="summaryText">Analyzing clinical notes...</span>
+      </div>
+
+      <div class="chat-wrapper">
+        <div class="chat-scroll" id="chatArea"></div>
+        <div class="suggestion-bar" id="suggestionBar"></div>
+        
+        <div class="action-bar">
+          <input type="text" id="userInput" class="form-control" style="flex: 1;" placeholder="Describe your symptoms or tap the microphone to speak...">
+          <button type="button" id="micBtn" class="btn btn-secondary" style="border-radius: 50%; width: 44px; height: 44px; padding: 0;" title="Click to Speak">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          </button>
+          <button type="button" id="sendBtn" class="btn btn-primary" style="padding: 0.75rem 1.25rem;">Submit</button>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span id="voiceIndicator" style="font-size: 0.8rem; color: var(--text-muted);">Voice engine: Standby</span>
+        <button type="button" id="proceedBtn" class="btn btn-primary">Proceed to Medical Records &rarr;</button>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { ClinicalAPI } from './api.js';
+
+    const language = localStorage.getItem('sih_opd_language') || 'en';
+    const uiText = {
+      en: {
+        title: 'AI Clinical Intake Assistant', subtitle: 'Guided Anamnesis', summary: 'Extracted Summary: ',
+        placeholder: 'Describe your symptoms or tap the microphone to speak...', submit: 'Submit',
+        proceed: 'Proceed to Medical Records →', standby: 'Voice engine: Standby', listening: 'Listening... Speak your symptoms clearly.',
+        captured: 'Answer captured.', unsupported: 'Voice recognition not supported on this browser.',
+        missing: 'Please describe your primary health issue to the assistant before proceeding.',
+        greeting: 'Namaste! I am your OPD Health Assistant. Please tell me in your own words: What health problem or illness brings you to the hospital today?',
+        onset: 'Thank you for sharing. Could you tell me how long you have been having these symptoms?',
+        duration: 'Thank you. How long have these symptoms been continuing?',
+        severity: 'On a scale of 1 to 10, how severe is your pain or discomfort right now?',
+        complete: "Thank you. I have synthesized your clinical intake. Please click 'Proceed to Medical Records' below to upload any past prescriptions or lab reports.",
+        saved: 'Your case history is already saved. You can proceed directly to the next step.',
+        none: 'None', pending: 'Pending', unspecified: 'Not specified', context: 'Context:', durationLabel: 'Duration:', severityLabel: 'Severity:'
+      },
+      hi: {
+        title: 'AI नैदानिक जानकारी सहायक', subtitle: 'निर्देशित स्वास्थ्य इतिहास', summary: 'निकाला गया सारांश: ',
+        placeholder: 'अपने लक्षण बताएं या बोलने के लिए माइक्रोफोन दबाएं...', submit: 'जमा करें', proceed: 'चिकित्सकीय रिकॉर्ड पर जाएं →', standby: 'वॉइस इंजन: तैयार',
+        listening: 'सुन रहा है... अपने लक्षण स्पष्ट रूप से बताएं।', captured: 'उत्तर दर्ज हो गया।', unsupported: 'इस ब्राउज़र में आवाज पहचान उपलब्ध नहीं है।',
+        missing: 'आगे बढ़ने से पहले कृपया अपनी मुख्य स्वास्थ्य समस्या बताएं।',
+        greeting: 'नमस्ते! मैं आपका OPD स्वास्थ्य सहायक हूं। कृपया अपने शब्दों में बताएं: आपको अस्पताल आने की क्या समस्या है?',
+        onset: 'जानकारी देने के लिए धन्यवाद। ये लक्षण आपको कब से हैं?', duration: 'धन्यवाद। ये लक्षण कितने समय से जारी हैं?',
+        severity: '1 से 10 के पैमाने पर आपका दर्द या परेशानी कितनी है?', complete: "धन्यवाद। आपकी जानकारी तैयार है। पुराने नुस्खे या जांच रिपोर्ट जोड़ने के लिए नीचे 'चिकित्सकीय रिकॉर्ड पर जाएं' दबाएं।",
+        saved: 'आपका केस इतिहास पहले ही सहेजा जा चुका है। अब आप अगले चरण पर जा सकते हैं।', none: 'कोई नहीं', pending: 'लंबित', unspecified: 'निर्दिष्ट नहीं', context: 'संदर्भ:', durationLabel: 'अवधि:', severityLabel: 'तीव्रता:'
+      },
+      bn: {
+        title: 'AI ক্লিনিক্যাল তথ্য সহায়ক', subtitle: 'নির্দেশিত স্বাস্থ্য ইতিহাস', summary: 'সংগৃহীত সারাংশ: ',
+        placeholder: 'আপনার উপসর্গ লিখুন বা কথা বলতে মাইক্রোফোন চাপুন...', submit: 'জমা দিন', proceed: 'চিকিৎসা নথিতে যান →', standby: 'ভয়েস ইঞ্জিন: প্রস্তুত',
+        listening: 'শুনছি... আপনার উপসর্গ স্পষ্টভাবে বলুন।', captured: 'উত্তর গ্রহণ করা হয়েছে।', unsupported: 'এই ব্রাউজারে ভয়েস শনাক্তকরণ সমর্থিত নয়।',
+        missing: 'এগিয়ে যাওয়ার আগে আপনার প্রধান স্বাস্থ্য সমস্যা জানান।',
+        greeting: 'নমস্কার! আমি আপনার OPD স্বাস্থ্য সহায়ক। নিজের ভাষায় বলুন: হাসপাতালে আসার কারণ কী?',
+        onset: 'জানানোর জন্য ধন্যবাদ। এই উপসর্গগুলি কতদিন ধরে হচ্ছে?', duration: 'ধন্যবাদ। এই উপসর্গ কতক্ষণ ধরে চলছে?',
+        severity: '১ থেকে ১০ এর মধ্যে আপনার ব্যথা বা অস্বস্তি কতটা?', complete: "ধন্যবাদ। আপনার ক্লিনিক্যাল তথ্য প্রস্তুত। পুরনো প্রেসক্রিপশন বা পরীক্ষার রিপোর্ট যোগ করতে নিচের 'চিকিৎসা নথিতে যান' চাপুন।",
+        saved: 'আপনার কেসের ইতিহাস ইতিমধ্যে সংরক্ষিত হয়েছে। সরাসরি পরবর্তী ধাপে যান।', none: 'কিছু নয়', pending: 'অপেক্ষমাণ', unspecified: 'উল্লেখ নেই', context: 'প্রসঙ্গ:', durationLabel: 'সময়কাল:', severityLabel: 'তীব্রতা:'
+      },
+      te: {
+        title: 'AI క్లినికల్ సమాచారం సహాయకుడు', subtitle: 'మార్గదర్శక ఆరోగ్య చరిత్ర', summary: 'సేకరించిన సారాంశం: ',
+        placeholder: 'మీ లక్షణాలను వివరించండి లేదా మాట్లాడటానికి మైక్రోఫోన్ నొక్కండి...', submit: 'సమర్పించండి', proceed: 'వైద్య రికార్డులకు వెళ్లండి →', standby: 'వాయిస్ ఇంజిన్: సిద్ధంగా ఉంది',
+        listening: 'వింటున్నాను... మీ లక్షణాలను స్పష్టంగా చెప్పండి.', captured: 'సమాధానం నమోదు చేయబడింది.', unsupported: 'ఈ బ్రౌజర్‌లో వాయిస్ గుర్తింపు అందుబాటులో లేదు.',
+        missing: 'కొనసాగించే ముందు మీ ప్రధాన ఆరోగ్య సమస్యను వివరించండి.',
+        greeting: 'నమస్కారం! నేను మీ OPD ఆరోగ్య సహాయకుడిని. మీ మాటల్లో చెప్పండి: ఆసుపత్రికి రావడానికి కారణం ఏమిటి?',
+        onset: 'తెలిపినందుకు ధన్యవాదాలు. ఈ లక్షణాలు ఎప్పటి నుంచి ఉన్నాయి?', duration: 'ధన్యవాదాలు. ఈ లక్షణాలు ఎంతకాలంగా కొనసాగుతున్నాయి?',
+        severity: '1 నుండి 10 వరకు మీ నొప్పి లేదా అసౌకర్యం ఎంత తీవ్రంగా ఉంది?', complete: "ధన్యవాదాలు. మీ క్లినికల్ సమాచారం సిద్ధమైంది. పాత ప్రిస్క్రిప్షన్‌లు లేదా పరీక్షా నివేదికలను జోడించడానికి క్రింద 'వైద్య రికార్డులకు వెళ్లండి' నొక్కండి.",
+        saved: 'మీ కేసు చరిత్ర ఇప్పటికే సేవ్ చేయబడింది. నేరుగా తదుపరి దశకు వెళ్లండి.', none: 'ఏదీ లేదు', pending: 'వేచి ఉంది', unspecified: 'పేర్కొనలేదు', context: 'సందర్భం:', durationLabel: 'వ్యవధి:', severityLabel: 'తీవ్రత:'
+      }
+    };
+    const locale = uiText[language] || uiText.en;
+    const localizedClinical = {
+      en: {
+        cardiac: ['I noted you mentioned discomfort in your chest. Does the pain spread to your left shoulder, jaw, or back? Are you sweating profusely or having breathlessness?', ['Radiates to left arm', 'Shortness of breath', 'Sweating heavily', 'Just localized burning']],
+        respiratory: ['Understood. Is your cough dry or producing colored phlegm? Are you also experiencing fever, chest whistling, or breathlessness while lying flat?', ['Dry persistent cough', 'Cough with yellow/green phlegm', 'Difficulty breathing', 'Mild throat irritation']],
+        gastrointestinal: ['Received. Is the abdominal pain burning, cramping, or sharp? Does it get worse after eating spicy food or on an empty stomach?', ['Severe burning acidity', 'Cramping with loose stools', 'Nausea and vomiting', 'Sharp lower abdominal pain']],
+        musculoskeletal: ['Got it. Is there visible swelling, warmth, or morning stiffness in the joint? Does resting make the pain better or worse?', ['Stiff in the morning', 'Visible swelling & warmth', 'Sharp pain during movement', 'Continuous dull ache']],
+        fever_infection: ['Noted. Is your fever accompanied by shivering or chills? Do you have severe eye pain, rash, or general body ache?', ['High fever with chills', 'Severe headache & eye pain', 'Continuous low-grade fever', 'Fever with shivering']]
+      },
+      hi: {
+        cardiac: ['आपने छाती में परेशानी बताई है। क्या दर्द बाएं कंधे, जबड़े या पीठ तक जाता है? क्या बहुत पसीना या सांस लेने में परेशानी है?', ['बाएं हाथ तक दर्द', 'सांस लेने में परेशानी', 'बहुत पसीना', 'स्थानीय जलन']],
+        respiratory: ['समझ गया। आपकी खांसी सूखी है या बलगम के साथ? क्या बुखार, सीने में सीटी या लेटने पर सांस फूलती है?', ['लगातार सूखी खांसी', 'पीला/हरा बलगम', 'सांस लेने में कठिनाई', 'हल्की गले की जलन']],
+        gastrointestinal: ['क्या पेट का दर्द जलन, ऐंठन या तेज है? क्या मसालेदार खाना खाने के बाद या खाली पेट बढ़ता है?', ['तेज जलन', 'दस्त के साथ ऐंठन', 'मतली और उल्टी', 'पेट के निचले हिस्से में तेज दर्द']],
+        musculoskeletal: ['क्या जोड़ में सूजन, गर्माहट या सुबह अकड़न है? आराम करने से दर्द कम या ज्यादा होता है?', ['सुबह अकड़न', 'सूजन और गर्माहट', 'चलने पर तेज दर्द', 'लगातार हल्का दर्द']],
+        fever_infection: ['क्या बुखार के साथ कंपकंपी या ठंड लगती है? क्या आंखों में तेज दर्द, दाने या शरीर में दर्द है?', ['ठंड के साथ तेज बुखार', 'तेज सिरदर्द और आंखों में दर्द', 'लगातार हल्का बुखार', 'कंपकंपी के साथ बुखार']]
+      },
+      bn: {
+        cardiac: ['বুকে অস্বস্তির কথা বলেছেন। ব্যথা কি বাঁ কাঁধ, চোয়াল বা পিঠে ছড়ায়? অতিরিক্ত ঘাম বা শ্বাসকষ্ট হচ্ছে?', ['বাঁ হাতে ছড়ায়', 'শ্বাসকষ্ট', 'অতিরিক্ত ঘাম', 'স্থানীয় জ্বালা']],
+        respiratory: ['আপনার কাশি কি শুকনো নাকি কফসহ? জ্বর, বুকে সাঁই সাঁই বা শুয়ে থাকলে শ্বাসকষ্ট হয়?', ['শুকনো কাশি', 'হলুদ/সবুজ কফ', 'শ্বাস নিতে অসুবিধা', 'হালকা গলা জ্বালা']],
+        gastrointestinal: ['পেটের ব্যথা কি জ্বালা, মোচড় বা তীক্ষ্ণ? ঝাল খাবারের পর বা খালি পেটে বাড়ে?', ['তীব্র অম্বল', 'পাতলা পায়খানার সঙ্গে মোচড়', 'বমি বমি ভাব ও বমি', 'তলপেটে তীব্র ব্যথা']],
+        musculoskeletal: ['জয়েন্টে ফোলা, গরমভাব বা সকালে শক্তভাব আছে? বিশ্রামে ব্যথা কমে নাকি বাড়ে?', ['সকালে শক্তভাব', 'ফোলা ও গরমভাব', 'নড়াচড়ায় তীব্র ব্যথা', 'একটানা মৃদু ব্যথা']],
+        fever_infection: ['জ্বরের সঙ্গে কাঁপুনি বা ঠান্ডা লাগে? চোখে তীব্র ব্যথা, ফুসকুড়ি বা শরীর ব্যথা আছে?', ['কাঁপুনিসহ জ্বর', 'তীব্র মাথা ও চোখের ব্যথা', 'একটানা হালকা জ্বর', 'কাঁপুনিসহ জ্বর']]
+      },
+      te: {
+        cardiac: ['ఛాతీలో అసౌకర్యం ఉందని తెలిపారు. నొప్పి ఎడమ భుజం, దవడ లేదా వెన్నుకు వ్యాపిస్తుందా? ఎక్కువ చెమట లేదా శ్వాస తీసుకోవడంలో ఇబ్బంది ఉందా?', ['ఎడమ చేతికి వ్యాపిస్తుంది', 'శ్వాస తీసుకోవడంలో ఇబ్బంది', 'ఎక్కువ చెమట', 'స్థానిక మంట']],
+        respiratory: ['మీ దగ్గు పొడిదా లేదా కఫంతో ఉందా? జ్వరం, ఛాతీలో శబ్దం లేదా పడుకున్నప్పుడు శ్వాస తీసుకోవడంలో ఇబ్బంది ఉందా?', ['నిరంతర పొడి దగ్గు', 'పసుపు/ఆకుపచ్చ కఫం', 'శ్వాసలో ఇబ్బంది', 'తేలికపాటి గొంతు మంట']],
+        gastrointestinal: ['కడుపు నొప్పి మంటగా, తిమ్మిరిగా లేదా తీవ్రంగా ఉందా? మసాలా ఆహారం తర్వాత లేదా ఖాళీ కడుపుతో పెరుగుతుందా?', ['తీవ్రమైన మంట', 'విరేచనాలతో తిమ్మిరి', 'వికారం మరియు వాంతులు', 'కింది కడుపులో తీవ్రమైన నొప్పి']],
+        musculoskeletal: ['కీళ్లలో వాపు, వేడి లేదా ఉదయం బిగుతు ఉందా? విశ్రాంతితో నొప్పి తగ్గుతుందా లేదా పెరుగుతుందా?', ['ఉదయం బిగుతు', 'వాపు మరియు వేడి', 'కదలికలో తీవ్రమైన నొప్పి', 'నిరంతర మందమైన నొప్పి']],
+        fever_infection: ['జ్వరంతో వణుకు లేదా చలి ఉందా? తీవ్రమైన కంటి నొప్పి, దద్దుర్లు లేదా శరీర నొప్పి ఉందా?', ['చలితో అధిక జ్వరం', 'తీవ్రమైన తలనొప్పి మరియు కంటి నొప్పి', 'నిరంతర తక్కువ జ్వరం', 'వణుకుతో జ్వరం']]
+      }
+    };
+
+    document.documentElement.lang = language;
+    document.getElementById('intakeTitle').textContent = locale.title;
+    document.getElementById('intakeSubtitle').textContent = locale.subtitle;
+    document.getElementById('summaryLabel').textContent = locale.summary;
+    document.getElementById('userInput').placeholder = locale.placeholder;
+    document.getElementById('sendBtn').textContent = locale.submit;
+    document.getElementById('proceedBtn').textContent = locale.proceed;
+
+    // State machine tracking patient intake stages
+    const intakeState = {
+      stage: 'CHIEF_COMPLAINT', // CHIEF_COMPLAINT -> ADAPTIVE_FOLLOWUP -> ONSET -> SEVERITY -> COMPLETE
+      detectedCategory: null,
+      narrativeHistory: [],
+      chiefComplaint: '',
+      adaptiveResponse: '',
+      duration: '',
+      severity: 5,
+      isEmergency: false,
+      emergencyFlags: []
+    };
+
+    const chatArea = document.getElementById('chatArea');
+    const suggestionBar = document.getElementById('suggestionBar');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const micBtn = document.getElementById('micBtn');
+    const voiceIndicator = document.getElementById('voiceIndicator');
+    const realtimeSummary = document.getElementById('realtimeSummary');
+    const summaryText = document.getElementById('summaryText');
+
+    // Clinical keyword dictionary for context extraction
+    const clinicalPatterns = {
+      cardiac: {
+        keys: ['chest pain', 'chest tightness', 'heart', 'radiating to arm', 'palpitations', 'pressure on chest'],
+        followUp: "I noted you mentioned discomfort in your chest. Does the pain spread to your left shoulder, jaw, or back? Are you sweating profusely or having breathlessness?",
+        chips: ["Radiates to left arm", "Shortness of breath", "Sweating heavily", "Just localized burning"]
+      },
+      respiratory: {
+        keys: ['cough', 'breathing', 'phlegm', 'shortness of breath', 'wheezing', 'asthma', 'throat'],
+        followUp: "Understood. Is your cough dry or producing colored phlegm? Are you also experiencing fever, chest whistling, or breathlessness while lying flat?",
+        chips: ["Dry persistent cough", "Cough with yellow/green phlegm", "Difficulty breathing", "Mild throat irritation"]
+      },
+      gastrointestinal: {
+        keys: ['stomach', 'abdomen', 'acidity', 'vomiting', 'nausea', 'gas', 'loose motion', 'diarrhea', 'constipation'],
+        followUp: "Received. Is the abdominal pain burning, cramping, or sharp? Does it get worse after eating spicy food or on an empty stomach?",
+        chips: ["Severe burning acidity", "Cramping with loose stools", "Nausea and vomiting", "Sharp lower abdominal pain"]
+      },
+      musculoskeletal: {
+        keys: ['joint', 'knee', 'back pain', 'muscle', 'neck pain', 'swelling', 'sprain'],
+        followUp: "Got it. Is there visible swelling, warmth, or morning stiffness in the joint? Does resting make the pain better or worse?",
+        chips: ["Stiff in the morning", "Visible swelling & warmth", "Sharp pain during movement", "Continuous dull ache"]
+      },
+      fever_infection: {
+        keys: ['fever', 'temperature', 'chills', 'shivering', 'headache', 'body ache', 'weakness'],
+        followUp: "Noted. Is your fever accompanied by shivering or chills? Do you have severe eye pain, rash, or general body ache?",
+        chips: ["High fever with chills", "Severe headache & eye pain", "Continuous low-grade fever", "Fever with shivering"]
+      }
+    };
+
+    // Voice Out (Text-to-Speech)
+    function botSpeak(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.lang = { en: 'en-IN', hi: 'hi-IN', bn: 'bn-IN', te: 'te-IN' }[language] || 'en-IN';
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    function addMessage(sender, text) {
+      const bubble = document.createElement('div');
+      bubble.className = `chat-bubble ${sender === 'bot' ? 'bot-bubble' : 'user-bubble'}`;
+      bubble.textContent = text;
+      chatArea.appendChild(bubble);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      if (sender === 'bot') botSpeak(text);
+    }
+
+    function renderChips(chips) {
+      suggestionBar.innerHTML = '';
+      chips.forEach(text => {
+        const btn = document.createElement('button');
+        btn.className = 'chip-btn';
+        btn.textContent = text;
+        btn.onclick = () => handleMessage(text);
+        suggestionBar.appendChild(btn);
+      });
+    }
+
+    function updateLiveSummary() {
+      realtimeSummary.style.display = 'block';
+      summaryText.textContent = `${intakeState.chiefComplaint || locale.none} | ${locale.context} ${intakeState.adaptiveResponse || locale.pending} | ${locale.durationLabel} ${intakeState.duration || locale.unspecified} | ${locale.severityLabel} ${intakeState.severity}/10`;
+    }
+
+    // Dynamic Clinical Intelligence Engine
+    function handleMessage(rawText) {
+      const text = rawText.trim();
+      if (!text) return;
+      addMessage('user', text);
+      userInput.value = '';
+      intakeState.narrativeHistory.push(text);
+
+      const lower = text.toLowerCase();
+
+      // Stage 1: Detect Primary Complaint & Context
+      if (intakeState.stage === 'CHIEF_COMPLAINT') {
+        intakeState.chiefComplaint = text;
+
+        // Red-flag detection
+        const risk = ClinicalAPI.evaluateRisk(text);
+        if (risk.isEmergency) {
+          intakeState.isEmergency = true;
+          intakeState.emergencyFlags = risk.emergencyKeywords;
+        }
+
+        // Identify organ system pattern
+        let matchedCategory = null;
+        for (const [category, data] of Object.entries(clinicalPatterns)) {
+          if (data.keys.some(k => lower.includes(k))) {
+            matchedCategory = category;
+            break;
+          }
+        }
+
+        if (matchedCategory) {
+          intakeState.detectedCategory = matchedCategory;
+          intakeState.stage = 'ADAPTIVE_FOLLOWUP';
+          setTimeout(() => {
+            const config = localizedClinical[language][matchedCategory];
+            addMessage('bot', config[0]);
+            renderChips(config[1]);
+          }, 600);
+        } else {
+          // Fallback if broad or generic
+          intakeState.stage = 'ONSET';
+          setTimeout(() => {
+            addMessage('bot', locale.onset);
+            renderChips(language === 'hi' ? ['आज शुरू हुआ (12 घंटे से कम)', '2 से 3 दिन पहले', 'लगभग एक सप्ताह', 'एक महीने से अधिक'] : language === 'bn' ? ['আজ শুরু হয়েছে (১২ ঘণ্টার কম)', '২ থেকে ৩ দিন আগে', 'প্রায় এক সপ্তাহ', 'এক মাসের বেশি'] : language === 'te' ? ['ఈరోజు ప్రారంభమైంది (12 గంటలలోపు)', '2-3 రోజుల క్రితం', 'సుమారు ఒక వారం', 'ఒక నెలకు పైగా'] : ['Started today (< 12 hrs)', '2 to 3 days ago', 'About a week', 'More than a month']);
+          }, 600);
+        }
+        updateLiveSummary();
+        return;
+      }
+
+      // Stage 2: Adaptive Follow-up based on patient elaboration
+      if (intakeState.stage === 'ADAPTIVE_FOLLOWUP') {
+        intakeState.adaptiveResponse = text;
+        intakeState.stage = 'ONSET';
+        setTimeout(() => {
+          addMessage('bot', locale.duration);
+          renderChips(language === 'hi' ? ['आज शुरू हुआ (12 घंटे से कम)', 'पिछले 2 से 3 दिन', 'लगभग 1 से 2 सप्ताह', 'पुरानी समस्या (1 महीने से अधिक)'] : language === 'bn' ? ['আজ শুরু হয়েছে (১২ ঘণ্টার কম)', 'গত ২ থেকে ৩ দিন', 'প্রায় ১ থেকে ২ সপ্তাহ', 'দীর্ঘস্থায়ী (১ মাসের বেশি)'] : language === 'te' ? ['ఈరోజు ప్రారంభమైంది (12 గంటలలోపు)', 'గత 2-3 రోజులు', 'సుమారు 1-2 వారాలు', 'దీర్ఘకాలికం (1 నెలకు పైగా)'] : ['Started today (< 12 hrs)', 'Last 2 to 3 days', 'Around 1 to 2 weeks', 'Chronic (> 1 month)']);
+        }, 600);
+        updateLiveSummary();
+        return;
+      }
+
+      // Stage 3: Onset Duration Extraction
+      if (intakeState.stage === 'ONSET') {
+        intakeState.duration = text;
+        intakeState.stage = 'SEVERITY';
+        setTimeout(() => {
+          addMessage('bot', locale.severity);
+          renderChips(language === 'hi' ? ['1 - 3 (हल्का)', '4 - 6 (मध्यम)', '7 - 8 (तेज दर्द)', '9 - 10 (असहनीय आपातकाल)'] : language === 'bn' ? ['১ - ৩ (হালকা)', '৪ - ৬ (মাঝারি)', '৭ - ৮ (তীব্র ব্যথা)', '৯ - ১০ (অসহনীয় জরুরি অবস্থা)'] : language === 'te' ? ['1 - 3 (తేలికపాటి)', '4 - 6 (మధ్యస్థ)', '7 - 8 (తీవ్రమైన నొప్పి)', '9 - 10 (భరించలేని అత్యవసరం)'] : ['1 - 3 (Mild, manageable)', '4 - 6 (Moderate, disturbing sleep)', '7 - 8 (Severe pain)', '9 - 10 (Unbearable emergency)']);
+        }, 600);
+        updateLiveSummary();
+        return;
+      }
+
+      // Stage 4: Pain Severity Extraction & Finalization
+      if (intakeState.stage === 'SEVERITY') {
+        const numMatch = text.match(/\d+/);
+        intakeState.severity = numMatch ? parseInt(numMatch[0], 10) : 5;
+        intakeState.stage = 'COMPLETE';
+
+        setTimeout(() => {
+          addMessage('bot', locale.complete);
+          suggestionBar.innerHTML = '';
+        }, 600);
+        updateLiveSummary();
+        return;
+      }
+
+      if (intakeState.stage === 'COMPLETE') {
+        addMessage('bot', locale.saved);
+      }
+    }
+
+    sendBtn.onclick = () => handleMessage(userInput.value);
+    userInput.onkeydown = (e) => { if (e.key === 'Enter') handleMessage(userInput.value); };
+
+    // Web Speech API: Continuous Speech-to-Text
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognizer = new SpeechRecognition();
+      recognizer.interimResults = false;
+      recognizer.lang = { en: 'en-IN', hi: 'hi-IN', bn: 'bn-IN', te: 'te-IN' }[language] || 'en-IN';
+      let isRecording = false;
+
+      micBtn.onclick = () => {
+        if (!isRecording) {
+          recognizer.start();
+          micBtn.classList.add('mic-recording');
+          voiceIndicator.textContent = locale.listening;
+          isRecording = true;
+        } else {
+          recognizer.stop();
+          micBtn.classList.remove('mic-recording');
+          voiceIndicator.textContent = locale.standby;
+          isRecording = false;
+        }
+      };
+
+      recognizer.onresult = (evt) => {
+        const spoken = evt.results[0][0].transcript;
+        handleMessage(spoken);
+        micBtn.classList.remove('mic-recording');
+        voiceIndicator.textContent = locale.captured;
+        isRecording = false;
+      };
+
+      recognizer.onerror = () => {
+        micBtn.classList.remove('mic-recording');
+        voiceIndicator.textContent = locale.unsupported;
+        isRecording = false;
+      };
+    } else {
+      micBtn.disabled = true;
+      voiceIndicator.textContent = locale.unsupported;
+    }
+
+    // Save consolidated case intake to API and redirect
+    document.getElementById('proceedBtn').onclick = () => {
+      if (!intakeState.chiefComplaint) {
+        alert(locale.missing);
+        return;
+      }
+
+      const fullNarrative = `${intakeState.chiefComplaint}. Detailed findings: ${intakeState.adaptiveResponse || 'Standard presentation'}`;
+
+      ClinicalAPI.saveDraft({
+        clinicalImpression: {
+          chiefComplaint: fullNarrative,
+          duration: intakeState.duration || "1-3 days",
+          severityScale: intakeState.severity,
+          isEmergency: intakeState.isEmergency,
+          emergencyKeywords: intakeState.emergencyFlags
+        }
+      });
+
+      window.location.href = 'records.html';
+    };
+
+    // Initial Bot Greeting
+    setTimeout(() => {
+      addMessage('bot', locale.greeting);
+      renderChips(language === 'hi' ? ['छाती में जकड़न / दर्द', 'ठंड के साथ तेज बुखार', 'पेट में तेज जलन', 'पुराना घुटने का दर्द', 'लगातार बलगम वाली खांसी'] : language === 'bn' ? ['বুকে চাপ / ব্যথা', 'কাঁপুনিসহ জ্বর', 'পেটে তীব্র জ্বালা', 'দীর্ঘদিনের হাঁটুর ব্যথা', 'একটানা কফের কাশি'] : language === 'te' ? ['ఛాతీలో బిగుతు / నొప్పి', 'చలితో అధిక జ్వరం', 'కడుపులో తీవ్రమైన మంట', 'దీర్ఘకాలిక మోకాలి నొప్పి', 'నిరంతర కఫం దగ్గు'] : ['Chest tightness / pain', 'High fever with chills', 'Severe stomach burning', 'Chronic knee pain', 'Persistent wet cough']);
+    }, 400);
+  </script>
+</body>
+</html>

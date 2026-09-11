@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPD Smart Kiosk - Patient Registration</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header-nav">
+      <a href="#" class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+        <span class="brand-copy">
+          <strong class="brand-name">Nidaan</strong>
+          <small class="brand-subtitle">OPD Assist System</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <a href="patient-history.html" class="btn btn-secondary locker-link" aria-label="Open Patient Health Locker">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path d="M7 5V3h10v2M8 11h8M12 11v4" />
+          </svg>
+          <span>Patient Health Locker</span>
+        </a>
+        <select id="langSelect" class="form-control" style="width: auto;">
+          <option value="en">English</option>
+          <option value="hi">हिन्दी (Hindi)</option>
+          <option value="bn">বাংলা (Bengali)</option>
+          <option value="te">తెలుగు (Telugu)</option>
+        </select>
+      </div>
+    </div>
+
+    <main class="kiosk-card">
+      <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem;" id="uiTitle">Patient Registration</h2>
+      <p style="color: var(--text-muted); margin-bottom: 2rem;" id="uiSubtitle">Enter details or ABHA identifier to initiate case anamnesis.</p>
+
+      <form id="demographicsForm">
+        <div class="form-group">
+          <label for="fullName">Full Name *</label>
+          <input type="text" id="fullName" class="form-control" required placeholder="e.g. Ramesh Chandra Verma">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label for="age">Age (Years) *</label>
+            <input type="number" id="age" class="form-control" required min="1" max="120" placeholder="e.g. 42">
+          </div>
+          <div class="form-group">
+            <label for="gender">Gender *</label>
+            <select id="gender" class="form-control" required>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="transgender">Other / Transgender</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="mobile">Mobile Number / ABHA Address *</label>
+          <input type="text" id="mobile" class="form-control" required placeholder="9876543210 or ramesh@abdm">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+          <span>Start Case-Taking</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </form>
+    </main>
+  </div>
+
+  <script type="module">
+    import { ClinicalAPI } from './api.js';
+
+    const translations = {
+      en: {
+        title: 'Patient Registration',
+        subtitle: 'Enter details or ABHA identifier to initiate case anamnesis.',
+        name: 'Full Name *', age: 'Age (Years) *', gender: 'Gender *',
+        contact: 'Mobile Number / ABHA Address *', submit: 'Start Case-Taking',
+        namePlaceholder: 'e.g. Ramesh Chandra Verma', agePlaceholder: 'e.g. 42',
+        contactPlaceholder: '9876543210 or ramesh@abdm', male: 'Male', female: 'Female', other: 'Other / Transgender'
+      },
+      hi: {
+        title: 'मरीज का पंजीकरण',
+        subtitle: 'केस इतिहास शुरू करने के लिए विवरण या ABHA पहचान दर्ज करें।',
+        name: 'पूरा नाम *', age: 'आयु (वर्ष) *', gender: 'लिंग *',
+        contact: 'मोबाइल नंबर / ABHA पता *', submit: 'केस लेना शुरू करें',
+        namePlaceholder: 'उदाहरण: रमेश चंद्र वर्मा', agePlaceholder: 'उदाहरण: 42',
+        contactPlaceholder: '9876543210 या ramesh@abdm', male: 'पुरुष', female: 'महिला', other: 'अन्य / ट्रांसजेंडर'
+      },
+      bn: {
+        title: 'রোগী নিবন্ধন',
+        subtitle: 'কেস ইতিহাস শুরু করতে তথ্য বা ABHA পরিচয় লিখুন।',
+        name: 'পুরো নাম *', age: 'বয়স (বছর) *', gender: 'লিঙ্গ *',
+        contact: 'মোবাইল নম্বর / ABHA ঠিকানা *', submit: 'কেস নেওয়া শুরু করুন',
+        namePlaceholder: 'উদাহরণ: রমেশ চন্দ্র ভার্মা', agePlaceholder: 'উদাহরণ: ৪২',
+        contactPlaceholder: '9876543210 বা ramesh@abdm', male: 'পুরুষ', female: 'মহিলা', other: 'অন্যান্য / ট্রান্সজেন্ডার'
+      },
+      te: {
+        title: 'రోగి నమోదు',
+        subtitle: 'కేసు చరిత్ర ప్రారంభించడానికి వివరాలు లేదా ABHA గుర్తింపును నమోదు చేయండి.',
+        name: 'పూర్తి పేరు *', age: 'వయస్సు (సంవత్సరాలు) *', gender: 'లింగం *',
+        contact: 'మొబైల్ నంబర్ / ABHA చిరునామా *', submit: 'కేసు నమోదు ప్రారంభించండి',
+        namePlaceholder: 'ఉదా: రమేష్ చంద్ర వర్మ', agePlaceholder: 'ఉదా: 42',
+        contactPlaceholder: '9876543210 లేదా ramesh@abdm', male: 'పురుషుడు', female: 'స్త్రీ', other: 'ఇతర / ట్రాన్స్‌జెండర్'
+      }
+    };
+
+    const langSelect = document.getElementById('langSelect');
+    const savedLanguage = localStorage.getItem('sih_opd_language') || 'en';
+    langSelect.value = savedLanguage;
+
+    function applyLanguage(language) {
+      const text = translations[language] || translations.en;
+      document.documentElement.lang = language;
+      document.getElementById('uiTitle').textContent = text.title;
+      document.getElementById('uiSubtitle').textContent = text.subtitle;
+      document.querySelector('label[for="fullName"]').textContent = text.name;
+      document.querySelector('label[for="age"]').textContent = text.age;
+      document.querySelector('label[for="gender"]').textContent = text.gender;
+      document.querySelector('label[for="mobile"]').textContent = text.contact;
+      document.getElementById('fullName').placeholder = text.namePlaceholder;
+      document.getElementById('age').placeholder = text.agePlaceholder;
+      document.getElementById('mobile').placeholder = text.contactPlaceholder;
+      document.querySelector('#gender option[value="male"]').textContent = text.male;
+      document.querySelector('#gender option[value="female"]').textContent = text.female;
+      document.querySelector('#gender option[value="transgender"]').textContent = text.other;
+      document.querySelector('#demographicsForm button span').textContent = text.submit;
+      localStorage.setItem('sih_opd_language', language);
+    }
+
+    applyLanguage(savedLanguage);
+    langSelect.addEventListener('change', () => applyLanguage(langSelect.value));
+
+    const form = document.getElementById('demographicsForm');
+    const existing = ClinicalAPI.getDraft();
+
+    // Populate existing session inputs if present
+    if (existing.patient.name) {
+      document.getElementById('fullName').value = existing.patient.name;
+      document.getElementById('age').value = existing.patient.age;
+      document.getElementById('gender').value = existing.patient.gender;
+      document.getElementById('mobile').value = existing.patient.telecom;
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      ClinicalAPI.saveDraft({
+        patient: {
+          name: document.getElementById('fullName').value.trim(),
+          age: document.getElementById('age').value,
+          gender: document.getElementById('gender').value,
+          telecom: document.getElementById('mobile').value.trim()
+        }
+      });
+      window.location.href = 'intake.html';
+    });
+  </script>
+</body>
+</html>

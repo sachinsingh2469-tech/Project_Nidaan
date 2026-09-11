@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ABHA Patient Health Locker & Digital Prescriptions</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .search-box {
+      display: flex;
+      gap: 0.75rem;
+      background: white;
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow);
+      margin-bottom: 2rem;
+    }
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .record-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+      position: relative;
+      transition: border-color 0.2s ease;
+    }
+    .record-card:hover {
+      border-color: var(--primary);
+    }
+    .status-pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+    }
+    .status-completed {
+      background: var(--success-bg);
+      color: var(--success-text);
+    }
+    .status-waiting {
+      background: #fef3c7;
+      color: #b45309;
+    }
+    .rx-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    .fhir-tag {
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.75rem;
+    }
+    @media print {
+      body * { visibility: hidden; }
+      .printable-slip, .printable-slip * { visibility: visible; }
+      .printable-slip {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        border: none;
+        box-shadow: none;
+      }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-nav no-print">
+      <a href="portal.html" class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>ABHA Digital Health Locker</span>
+      </a>
+      <a href="portal.html" class="btn btn-secondary" style="font-size: 0.875rem;">&larr; Return to Gateway</a>
+    </div>
+
+    <div class="search-box no-print">
+      <input type="text" id="searchInput" class="form-control" placeholder="Enter ABHA Address (e.g. ramesh@abdm) or Mobile Number...">
+      <button type="button" id="searchBtn" class="btn btn-primary" style="padding: 0.75rem 1.5rem; white-space: nowrap;">
+        Fetch Records
+      </button>
+    </div>
+
+    <div id="emptyNotice" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+      Enter a registered ABHA ID or mobile number above to retrieve verified hospital prescriptions and consultations.
+    </div>
+
+    <div id="resultsContainer" class="timeline" style="display: none;">
+      </div>
+  </div>
+
+  <script type="module">
+    import { ClinicalAPI } from './api.js';
+
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const emptyNotice = document.getElementById('emptyNotice');
+    const resultsContainer = document.getElementById('resultsContainer');
+
+    async function performLookup() {
+      const query = searchInput.value.trim();
+      if (!query) {
+        alert("Please enter an ABHA Address or Mobile number to search.");
+        return;
+      }
+
+      let records;
+      try {
+        records = await ClinicalAPI.getPatientHistory(query);
+      } catch (error) {
+        console.error(error);
+        alert(error.message);
+        return;
+      }
+      resultsContainer.innerHTML = '';
+
+      if (records.length === 0) {
+        emptyNotice.style.display = 'block';
+        emptyNotice.innerHTML = `No clinical encounters found for identifier: <strong>${query}</strong>.<br><small>Ensure consultation was finalized in the Doctor Portal.</small>`;
+        resultsContainer.style.display = 'none';
+        return;
+      }
+
+      emptyNotice.style.display = 'none';
+      resultsContainer.style.display = 'flex';
+
+      records.forEach(encounter => {
+        const isCompleted = encounter.status === 'completed';
+        const card = document.createElement('article');
+        card.className = 'record-card printable-slip';
+
+        const visitDate = new Date(encounter.timestamp).toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border); padding-bottom: 1rem;">
+            <div>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <span class="fhir-tag">FHIR R4 Bundle</span>
+                <span class="status-pill ${isCompleted ? 'status-completed' : 'status-waiting'}">
+                  ${isCompleted ? 'Prescription Dispatched & Synced' : 'Awaiting Consultation'}
+                </span>
+              </div>
+              <h2 style="font-size: 1.25rem; margin-top: 0.4rem;">${encounter.patient.name} (${encounter.patient.age} Y / ${encounter.patient.gender})</h2>
+              <p style="font-size: 0.8rem; color: var(--text-muted);">
+                ABHA ID: <strong>${encounter.patient.telecom}</strong> | Token: <strong>${encounter.token}</strong>
+              </p>
+            </div>
+            <div style="text-align: right;">
+              <small style="color: var(--text-muted); font-size: 0.8rem;">Encounter Timestamp</small>
+              <div style="font-weight: 600; font-size: 0.9rem;">${visitDate}</div>
+            </div>
+          </div>
+
+          <div style="margin: 1rem 0; font-size: 0.9rem;">
+            <strong>Chief Complaint Reported:</strong> ${encounter.clinicalImpression.chiefComplaint}
+          </div>
+
+          ${isCompleted ? `
+            <div class="rx-box">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <h4 style="color: var(--success-text); font-size: 0.9rem; text-transform: uppercase;">
+                  ℞ Authorized Digital Prescription
+                </h4>
+                <small style="color: var(--text-muted);">Verified Hospital Node</small>
+              </div>
+              <div style="font-size: 1rem; font-weight: 600; color: #1e293b; margin-bottom: 0.5rem;">
+                ${encounter.medicationRequest || 'No systemic medications indicated.'}
+              </div>
+              <div style="font-size: 0.85rem; color: #475569;">
+                <strong>Physician Clinical Notes:</strong> ${encounter.encounterNotes || 'Patient evaluated and advised regular follow-up.'}
+              </div>
+            </div>
+          ` : `
+            <div style="background: #fffbeb; border: 1px solid #fef3c7; padding: 0.75rem; border-radius: 4px; font-size: 0.85rem; color: #92400e; margin: 1rem 0;">
+              Patient is currently in the active OPD triage queue. The digital prescription will appear here once the doctor concludes consultation.
+            </div>
+          `}
+
+          <div class="no-print" style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+            ${isCompleted ? `
+              <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="window.print()">
+                🖨️ Print Clinical Slip
+              </button>
+            ` : ''}
+            <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="alert('Digital FHIR Hash: ' + '${encounter.id}')">
+              🛡️ View ABDM Cryptographic Hash
+            </button>
+          </div>
+        `;
+
+        resultsContainer.appendChild(card);
+      });
+    }
+
+    searchBtn.onclick = performLookup;
+    searchInput.onkeydown = (e) => { if (e.key === 'Enter') performLookup(); };
+
+    // Auto-search if identifier passed via URL parameters (e.g. patient-history.html?id=ramesh@abdm)
+    const urlParams = new URLSearchParams(window.location.search);
+    const prefillId = urlParams.get('id');
+    if (prefillId) {
+      searchInput.value = prefillId;
+      performLookup();
+    }
+  </script>
+</body>
+</html>

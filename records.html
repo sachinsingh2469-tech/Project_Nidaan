@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPD Smart Kiosk - Document Upload & OCR</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <style>
+    .upload-box {
+      border: 2px dashed var(--primary);
+      background: #f0f9ff;
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 1rem;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .preview-container {
+      display: none;
+      margin-top: 1rem;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+    }
+    .extracted-summary-box {
+      background: #f8fafc;
+      border-left: 4px solid var(--primary);
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      margin-top: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-nav">
+      <span id="recordsTitle" class="brand">Step 3: Past Records & Document Upload</span>
+      <span id="recordsStep" style="font-size: 0.875rem; color: var(--text-muted);">Step 3 of 3</span>
+    </div>
+
+    <main class="kiosk-card">
+      <div class="form-group">
+        <label id="conditionsLabel">Underlying Chronic Illnesses</label>
+        <div class="checkbox-grid">
+          <label class="checkbox-card"><input type="checkbox" name="comorb" value="Type 2 Diabetes"><span data-condition="diabetes"> Type 2 Diabetes</span></label>
+          <label class="checkbox-card"><input type="checkbox" name="comorb" value="Hypertension"><span data-condition="hypertension"> Hypertension</span></label>
+          <label class="checkbox-card"><input type="checkbox" name="comorb" value="Asthma / COPD"><span data-condition="asthma"> Asthma / COPD</span></label>
+          <label class="checkbox-card"><input type="checkbox" name="comorb" value="Heart Disease"><span data-condition="heart"> Heart Disease</span></label>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+        <div class="form-group">
+          <label for="agni">Agni (Digestive Fire)</label>
+          <select id="agni" class="form-control">
+            <option value="Sama">Sama (Balanced)</option>
+            <option value="Vishama">Vishama (Irregular / Bloating)</option>
+            <option value="Tikshna">Tikshna (Intense / Acidic)</option>
+            <option value="Manda">Manda (Sluggish)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="kostha">Kostha (Bowel Pattern)</label>
+          <select id="kostha" class="form-control">
+            <option value="Madhyama">Madhyama (Regular)</option>
+            <option value="Krura">Krura (Hard / Constipated)</option>
+            <option value="Mridu">Mridu (Soft / Irritable)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top: 1.5rem;">
+        <label id="uploadLabel">Upload Past Prescription / Lab Report</label>
+        <div class="upload-box" onclick="document.getElementById('reportInput').click()">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary); margin: 0 auto 0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p id="uploadPrompt" style="font-weight: 600;">Tap to upload or take a photo of past prescription</p>
+          <span id="uploadSupport" style="font-size: 0.75rem; color: var(--text-muted);">Supports JPG, PNG (Auto-compressed for OCR extraction)</span>
+          <input type="file" id="reportInput" accept="image/*" style="display: none;">
+        </div>
+
+        <div id="ocrProgress" style="display: none; margin-bottom: 1rem;">
+          <span id="ocrStatusText" class="status-badge" style="background: #e0f2fe; color: #0369a1;">Processing image with OCR...</span>
+        </div>
+
+        <div id="previewContainer" class="preview-container">
+          <div style="display: flex; gap: 1rem; align-items: flex-start;">
+            <img id="thumbImg" src="" style="width: 90px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border);">
+            <div style="flex: 1;">
+              <strong id="fileNameDisplay" style="font-size: 0.9rem;">Document</strong>
+              <div id="extractedSummary" class="extracted-summary-box">Extracting clinical summary...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+        <button type="button" onclick="history.back()" id="backBtn" class="btn btn-secondary" style="flex: 1;">Back</button>
+        <button type="button" id="submitAllBtn" class="btn btn-primary" style="flex: 2;">Generate OPD Token &rarr;</button>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { ClinicalAPI } from './api.js';
+
+    const language = localStorage.getItem('sih_opd_language') || 'en';
+    const recordsText = {
+      en: { title: 'Step 3: Past Records & Document Upload', step: 'Step 3 of 3', conditions: 'Underlying Chronic Illnesses', upload: 'Upload Past Prescription / Lab Report', prompt: 'Tap to upload or take a photo of past prescription', support: 'Supports JPG, PNG (Auto-compressed for OCR extraction)', back: 'Back', submit: 'Generate OPD Token →', conditionsList: ['Type 2 Diabetes', 'Hypertension', 'Asthma / COPD', 'Heart Disease'] },
+      hi: { title: 'चरण 3: पुराने रिकॉर्ड और दस्तावेज़ अपलोड', step: 'चरण 3 में से 3', conditions: 'पहले से मौजूद बीमारियां', upload: 'पुराना नुस्खा / जांच रिपोर्ट अपलोड करें', prompt: 'पुराना नुस्खा अपलोड करें या फोटो लें', support: 'JPG, PNG समर्थित (OCR के लिए स्वतः संपीड़ित)', back: 'वापस', submit: 'OPD टोकन बनाएं →', conditionsList: ['टाइप 2 मधुमेह', 'उच्च रक्तचाप', 'अस्थमा / COPD', 'हृदय रोग'] },
+      bn: { title: 'ধাপ ৩: পুরনো নথি ও ডকুমেন্ট আপলোড', step: '৩টির মধ্যে ধাপ ৩', conditions: 'আগের দীর্ঘস্থায়ী অসুস্থতা', upload: 'পুরনো প্রেসক্রিপশন / পরীক্ষার রিপোর্ট আপলোড করুন', prompt: 'পুরনো প্রেসক্রিপশন আপলোড করুন বা ছবি তুলুন', support: 'JPG, PNG সমর্থিত (OCR-এর জন্য স্বয়ংক্রিয়ভাবে সংকুচিত)', back: 'পেছনে', submit: 'OPD টোকেন তৈরি করুন →', conditionsList: ['টাইপ ২ ডায়াবেটিস', 'উচ্চ রক্তচাপ', 'অ্যাজমা / COPD', 'হৃদরোগ'] },
+      te: { title: 'దశ 3: పాత రికార్డులు మరియు పత్రాల అప్‌లోడ్', step: '3లో దశ 3', conditions: 'ఇప్పటికే ఉన్న దీర్ఘకాలిక వ్యాధులు', upload: 'పాత ప్రిస్క్రిప్షన్ / ల్యాబ్ నివేదికను అప్‌లోడ్ చేయండి', prompt: 'పాత ప్రిస్క్రిప్షన్‌ను అప్‌లోడ్ చేయండి లేదా ఫోటో తీయండి', support: 'JPG, PNG మద్దతు (OCR కోసం ఆటోమేటిక్‌గా కుదించబడుతుంది)', back: 'వెనుకకు', submit: 'OPD టోకెన్ రూపొందించండి →', conditionsList: ['టైప్ 2 మధుమేహం', 'అధిక రక్తపోటు', 'ఆస్తమా / COPD', 'గుండె జబ్బు'] }
+    };
+    const locale = recordsText[language] || recordsText.en;
+    document.documentElement.lang = language;
+    document.getElementById('recordsTitle').textContent = locale.title;
+    document.getElementById('recordsStep').textContent = locale.step;
+    document.getElementById('conditionsLabel').textContent = locale.conditions;
+    document.getElementById('uploadLabel').textContent = locale.upload;
+    document.getElementById('uploadPrompt').textContent = locale.prompt;
+    document.getElementById('uploadSupport').textContent = locale.support;
+    document.getElementById('backBtn').textContent = locale.back;
+    document.getElementById('submitAllBtn').textContent = locale.submit;
+    document.querySelector('[data-condition="diabetes"]').textContent = ` ${locale.conditionsList[0]}`;
+    document.querySelector('[data-condition="hypertension"]').textContent = ` ${locale.conditionsList[1]}`;
+    document.querySelector('[data-condition="asthma"]').textContent = ` ${locale.conditionsList[2]}`;
+    document.querySelector('[data-condition="heart"]').textContent = ` ${locale.conditionsList[3]}`;
+
+    const fileInput = document.getElementById('reportInput');
+    const ocrProgress = document.getElementById('ocrProgress');
+    const ocrStatusText = document.getElementById('ocrStatusText');
+    const previewContainer = document.getElementById('previewContainer');
+    const thumbImg = document.getElementById('thumbImg');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const extractedSummaryBox = document.getElementById('extractedSummary');
+
+    let processedRecord = null;
+
+    // Compresses large phone images to prevent localStorage Quota Exhaustion
+    function compressImage(file, maxWidth = 900, quality = 0.65) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Heuristic Clinical Summarizer: Finds medications, vitals, and diagnoses from raw OCR text
+    function parseClinicalSummary(rawText) {
+      const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+      const medications = [];
+      const vitals = [];
+      const conditions = [];
+
+      const medIndicators = ['tab', 'cap', 'mg', 'syr', 'od', 'bd', 'tds', 'qid', 'paracetamol', 'metformin', 'pantop', 'amlo'];
+      const vitalIndicators = ['bp', 'pulse', 'spo2', 'sugar', 'hba1c', 'temp'];
+
+      lines.forEach(line => {
+        const lower = line.toLowerCase();
+        if (medIndicators.some(kw => lower.includes(kw))) {
+          medications.push(line);
+        } else if (vitalIndicators.some(kw => lower.includes(kw))) {
+          vitals.push(line);
+        }
+      });
+
+      // Construct a clean, structured doctor summary
+      let summaryText = "";
+      if (medications.length) summaryText += `• Detected Meds: ${medications.slice(0, 3).join(', ')}\n`;
+      if (vitals.length) summaryText += `• Key Vitals/Labs: ${vitals.slice(0, 2).join(', ')}\n`;
+      
+      if (!summaryText) {
+        summaryText = lines.slice(0, 3).join(' ') || "Prescription uploaded. Document readable in consultation room.";
+      }
+
+      return {
+        raw: rawText,
+        structuredSummary: summaryText
+      };
+    }
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      ocrProgress.style.display = "block";
+      ocrStatusText.textContent = "Compressing & analyzing document...";
+
+      try {
+        // 1. Compress image to avoid localStorage 5MB limit
+        const compressedBase64 = await compressImage(file);
+
+        // 2. Perform in-browser OCR using Tesseract.js
+        ocrStatusText.textContent = "Running AI OCR extraction... (Takes ~3-5s)";
+        const result = await Tesseract.recognize(compressedBase64, 'eng');
+        const rawText = result.data.text;
+
+        // 3. Summarize extracted text
+        const parsed = parseClinicalSummary(rawText);
+
+        processedRecord = {
+          name: file.name,
+          dataUrl: compressedBase64,
+          rawOcr: rawText || "No machine-readable text recognized.",
+          summary: parsed.structuredSummary
+        };
+
+        // Render preview
+        ocrProgress.style.display = "none";
+        previewContainer.style.display = "block";
+        thumbImg.src = compressedBase64;
+        fileNameDisplay.textContent = file.name;
+        extractedSummaryBox.textContent = parsed.structuredSummary;
+
+      } catch (err) {
+        console.error(err);
+        ocrStatusText.textContent = "OCR processing failed, but image saved.";
+      }
+    });
+
+    document.getElementById('submitAllBtn').addEventListener('click', async () => {
+      const selectedComorb = Array.from(document.querySelectorAll('input[name="comorb"]:checked'))
+        .map(el => el.value);
+
+      ClinicalAPI.saveDraft({
+        comorbidities: selectedComorb,
+        ayushAssessment: {
+          agni: document.getElementById('agni').value,
+          kostha: document.getElementById('kostha').value
+        },
+        pastRecords: processedRecord ? [processedRecord] : []
+      });
+
+      const submitButton = document.getElementById('submitAllBtn');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Saving to MySQL...';
+      try {
+        const submitted = await ClinicalAPI.submitCase();
+        sessionStorage.setItem('last_submitted_token', JSON.stringify(submitted));
+        window.location.href = 'token.html';
+      } catch (error) {
+        console.error(error);
+        alert(error.message);
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit & Generate OPD Token';
+      }
+    });
+  </script>
+</body>
+</html>

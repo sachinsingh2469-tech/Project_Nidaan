@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPD Slip Issued</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      .print-card, .print-card * { visibility: visible; }
+      .print-card { position: absolute; left: 0; top: 0; width: 100%; border: none; box-shadow: none; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" style="text-align: center;">
+    <main class="kiosk-card print-card" style="max-width: 500px; margin: 0 auto; text-align: left;">
+      <div style="text-align: center; border-bottom: 2px dashed var(--border); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.25rem;">Civil Hospital OPD Registration</h2>
+        <p style="font-size: 0.75rem; color: var(--text-muted);">Ministry of Health & Family Welfare / ABDM Network</p>
+        <h1 id="tokenDisplay" style="font-size: 3rem; color: var(--primary); margin: 0.75rem 0;">#OPD-0000</h1>
+        <div id="triageBadgeContainer"></div>
+      </div>
+
+      <div style="font-size: 0.875rem; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
+        <div><strong>Patient:</strong> <span id="pName">--</span></div>
+        <div><strong>Age / Gender:</strong> <span id="pDetails">--</span></div>
+        <div><strong>Chief Complaint:</strong> <span id="pComplaint">--</span></div>
+        <div><strong>Issued At:</strong> <span id="pTime">--</span></div>
+      </div>
+
+      <div class="no-print" style="display: flex; gap: 0.75rem;">
+        <button onclick="window.print()" class="btn btn-secondary" style="flex: 1;">Print Slip</button>
+        <a href="index.html" class="btn btn-primary" style="flex: 1;">Next Patient</a>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const record = JSON.parse(sessionStorage.getItem('last_submitted_token'));
+    if (!record) {
+      window.location.href = 'index.html';
+    } else {
+      document.getElementById('tokenDisplay').textContent = record.token;
+      document.getElementById('pName').textContent = record.patient.name;
+      document.getElementById('pDetails').textContent = `${record.patient.age} Y / ${record.patient.gender}`;
+      document.getElementById('pComplaint').textContent = record.clinicalImpression.chiefComplaint;
+      document.getElementById('pTime').textContent = new Date(record.timestamp).toLocaleTimeString();
+
+      const badgeContainer = document.getElementById('triageBadgeContainer');
+      if (record.clinicalImpression.isEmergency) {
+        badgeContainer.innerHTML = '<span class="badge badge-danger pulse-red">CRITICAL TRIAGE: RED FLAG</span>';
+      } else {
+        badgeContainer.innerHTML = '<span class="badge badge-normal">Standard Routine Consultation</span>';
+      }
+    }
+  </script>
+</body>
+</html>
